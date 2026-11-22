@@ -3,7 +3,7 @@ import '../data/demo_data.dart';
 import '../widgets/summary_widgets.dart';
 import '../services/project_service.dart';
 import '../services/screening_statistics_service.dart';
-
+import 'csv_import_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -26,9 +26,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final projects = await projectService.getProjects();
 
     if (projects.isEmpty) {
-      throw StateError(
-        'No review project is accessible to this account.',
-      );
+      throw StateError('No review project is accessible to this account.');
     }
 
     final project = projects.first;
@@ -102,19 +100,16 @@ class _DashboardPageState extends State<DashboardPage> {
         final data = snapshot.data!;
         final stats = data.statistics;
 
-        final progressPercent =
-        (stats.progress * 100).toStringAsFixed(1);
+        final progressPercent = (stats.progress * 100).toStringAsFixed(1);
 
         final fullyScreenedPercent = stats.totalArticles == 0
             ? 0.0
-            : stats.fullyScreenedArticles /
-            stats.totalArticles *
-            100;
+            : stats.fullyScreenedArticles / stats.totalArticles * 100;
 
         return PageFrame(
           title: data.projectTitle,
           description:
-          'Two independent reviewers per article · PostgreSQL data',
+              'Two independent reviewers per article · PostgreSQL data',
           children: [
             Align(
               alignment: Alignment.centerRight,
@@ -136,7 +131,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 SummaryCard(
                   label: 'Decisions completed',
                   value:
-                  '${stats.completedScreenings} / ${stats.requiredScreenings}',
+                      '${stats.completedScreenings} / ${stats.requiredScreenings}',
                   icon: Icons.fact_check_outlined,
                 ),
                 SummaryCard(
@@ -162,9 +157,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   children: [
                     Text(
                       'Decision completion',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -178,8 +171,8 @@ class _DashboardPageState extends State<DashboardPage> {
                     const SizedBox(height: 12),
                     Text(
                       '${fullyScreenedPercent.toStringAsFixed(1)}% '
-                          'of articles have received both decisions. '
-                          'Conflict resolution is tracked separately.',
+                      'of articles have received both decisions. '
+                      'Conflict resolution is tracked separately.',
                     ),
                   ],
                 ),
@@ -196,19 +189,13 @@ class _DashboardPageState extends State<DashboardPage> {
                   children: [
                     Text(
                       'Review team',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 12),
                     for (final member in data.members)
                       ListTile(
-                        leading: const Icon(
-                          Icons.person_outline,
-                        ),
-                        title: Text(
-                          member['display_name'].toString(),
-                        ),
+                        leading: const Icon(Icons.person_outline),
+                        title: Text(member['display_name'].toString()),
                         subtitle: Text(
                           '${stats.reviewerCounts[member['user_id'].toString()] ?? 0} screening decisions',
                         ),
@@ -236,26 +223,8 @@ class _DashboardData {
   });
 }
 
-
-class ImportPage extends StatelessWidget {
+class ImportPage extends CsvImportPage {
   const ImportPage({super.key});
-  @override
-  Widget build(BuildContext context) => const PageFrame(
-    title: 'Import screening results',
-    description: 'Planned: CSV exports from Rayyan or ASReview.',
-    children: [
-      Card(child: Padding(padding: EdgeInsets.all(24), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.upload_file_outlined, size: 42),
-          SizedBox(height: 12),
-          Text('Import integration is not enabled yet.'),
-          SizedBox(height: 8),
-          Text('Upcoming steps: select a file, map its columns, preview records, match article IDs, and confirm the import. Repeat imports must not double-count decisions.'),
-        ],
-      ))),
-    ],
-  );
 }
 
 class ArticlesPage extends StatefulWidget {
@@ -268,29 +237,54 @@ class _ArticlesPageState extends State<ArticlesPage> {
   String query = '';
   @override
   Widget build(BuildContext context) {
-    final filtered = articles.where((a) =>
-      a.title.toLowerCase().contains(query.toLowerCase()) ||
-      a.id.toLowerCase().contains(query.toLowerCase())).toList();
+    final filtered = articles
+        .where(
+          (a) =>
+              a.title.toLowerCase().contains(query.toLowerCase()) ||
+              a.id.toLowerCase().contains(query.toLowerCase()),
+        )
+        .toList();
     return PageFrame(
       title: 'Articles',
       description: 'Example articles and two independent screening decisions.',
       children: [
         TextField(
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.search),
-            labelText: 'Search by title or article ID', border: OutlineInputBorder()),
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.search),
+            labelText: 'Search by title or article ID',
+            border: OutlineInputBorder(),
+          ),
           onChanged: (value) => setState(() => query = value),
         ),
         const SizedBox(height: 16),
-        Card(child: Column(children: [
-          for (final article in filtered)
-            ListTile(
-              title: Text(article.title),
-              subtitle: Text('${article.id} · ${article.firstReviewer}: ${article.firstDecision} · ${article.secondReviewer}: ${article.secondDecision}'),
-              trailing: Chip(label: Text(article.isConflict ? 'Conflict' : article.isComplete ? 'Complete' : 'Pending')),
-              isThreeLine: true,
-            ),
-          if (filtered.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('No matching articles.')),
-        ])),
+        Card(
+          child: Column(
+            children: [
+              for (final article in filtered)
+                ListTile(
+                  title: Text(article.title),
+                  subtitle: Text(
+                    '${article.id} · ${article.firstReviewer}: ${article.firstDecision} · ${article.secondReviewer}: ${article.secondDecision}',
+                  ),
+                  trailing: Chip(
+                    label: Text(
+                      article.isConflict
+                          ? 'Conflict'
+                          : article.isComplete
+                          ? 'Complete'
+                          : 'Pending',
+                    ),
+                  ),
+                  isThreeLine: true,
+                ),
+              if (filtered.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text('No matching articles.'),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -303,24 +297,43 @@ class ConflictsPage extends StatelessWidget {
     final demoConflicts = articles.where((a) => a.isConflict).toList();
     return PageFrame(
       title: 'Conflicts',
-      description: 'Discussion first; the third author arbitrates if consensus is not reached.',
+      description:
+          'Discussion first; the third author arbitrates if consensus is not reached.',
       children: [
-        const ResponsiveSummaryCards(cards: [
-          SummaryCard(label: 'Awaiting discussion', value: '48', icon: Icons.forum_outlined),
-          SummaryCard(label: 'Awaiting arbitration', value: '12', icon: Icons.gavel_outlined),
-        ]),
-        const SizedBox(height: 16),
-        Card(child: Column(children: [
-          for (final a in demoConflicts)
-            ListTile(
-              leading: const Icon(Icons.sync_problem_outlined),
-              title: Text(a.title),
-              subtitle: Text('${a.firstReviewer}: ${a.firstDecision} · ${a.secondReviewer}: ${a.secondDecision}'),
-              trailing: const Chip(label: Text('Discuss')),
+        const ResponsiveSummaryCards(
+          cards: [
+            SummaryCard(
+              label: 'Awaiting discussion',
+              value: '48',
+              icon: Icons.forum_outlined,
             ),
-        ])),
+            SummaryCard(
+              label: 'Awaiting arbitration',
+              value: '12',
+              icon: Icons.gavel_outlined,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Column(
+            children: [
+              for (final a in demoConflicts)
+                ListTile(
+                  leading: const Icon(Icons.sync_problem_outlined),
+                  title: Text(a.title),
+                  subtitle: Text(
+                    '${a.firstReviewer}: ${a.firstDecision} · ${a.secondReviewer}: ${a.secondDecision}',
+                  ),
+                  trailing: const Chip(label: Text('Discuss')),
+                ),
+            ],
+          ),
+        ),
         const SizedBox(height: 12),
-        const Text('Discussion notes, consensus decisions, and arbitration actions will become interactive after the backend is connected.'),
+        const Text(
+          'Discussion notes, consensus decisions, and arbitration actions will become interactive after the backend is connected.',
+        ),
       ],
     );
   }
@@ -331,18 +344,39 @@ class StatisticsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PageFrame(
     title: 'Statistics',
-    description: 'Track assignment-level screening progress separately from article-level completion.',
+    description:
+        'Track assignment-level screening progress separately from article-level completion.',
     children: [
-      const ResponsiveSummaryCards(cards: [
-        SummaryCard(label: 'Decision completion', value: '75%', icon: Icons.percent),
-        SummaryCard(label: 'Fully screened articles', value: '68.3%', icon: Icons.done_all),
-        SummaryCard(label: 'Open conflicts', value: '48', icon: Icons.warning_amber_outlined),
-        SummaryCard(label: 'Awaiting arbitration', value: '12', icon: Icons.gavel_outlined),
-      ]),
+      const ResponsiveSummaryCards(
+        cards: [
+          SummaryCard(
+            label: 'Decision completion',
+            value: '75%',
+            icon: Icons.percent,
+          ),
+          SummaryCard(
+            label: 'Fully screened articles',
+            value: '68.3%',
+            icon: Icons.done_all,
+          ),
+          SummaryCard(
+            label: 'Open conflicts',
+            value: '48',
+            icon: Icons.warning_amber_outlined,
+          ),
+          SummaryCard(
+            label: 'Awaiting arbitration',
+            value: '12',
+            icon: Icons.gavel_outlined,
+          ),
+        ],
+      ),
       const SizedBox(height: 16),
       const ReviewerLeaderboard(),
       const SizedBox(height: 12),
-      const Text('Agreement rates will be calculated from articles with two recorded decisions. Resolved conflicts will retain both original decisions.'),
+      const Text(
+        'Agreement rates will be calculated from articles with two recorded decisions. Resolved conflicts will retain both original decisions.',
+      ),
     ],
   );
 }
