@@ -1,6 +1,16 @@
 import 'package:flutter/widgets.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'app/app.dart';
 
-export 'app/app.dart' show ReviewWorkspaceApp;
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-void main() => runApp(const ReviewWorkspaceApp());
+  await Supabase.initialize(
+    url: const String.fromEnvironment('SUPABASE_URL'),
+    publishableKey:
+    const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'),
+  );
+
+  runApp(const ReviewWorkspaceApp());
+}
