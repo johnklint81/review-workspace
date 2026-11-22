@@ -8,15 +8,17 @@ class ReviewWorkspaceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Review Workspace',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
-          scaffoldBackgroundColor: const Color(0xFFF7F9FC),
-        ),
-        home: const AuthGate(child: WorkspaceShell()),
-      );
+    title: 'Review Workspace',
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF2563EB),
+      ),
+      scaffoldBackgroundColor: const Color(0xFFF7F9FC),
+    ),
+    home: const AuthGate(child: WorkspaceShell()),
+  );
 }
 
 class WorkspaceShell extends StatefulWidget {
