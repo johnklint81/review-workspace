@@ -1,10 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:review_workspace/app/app.dart';
+import 'package:review_workspace/data/demo_data.dart';
 
 void main() {
-  testWidgets('Review Workspace loads successfully', (tester) async {
-    await tester.pumpWidget(const ReviewWorkspaceApp());
+  test('an article with two matching votes is complete without conflict', () {
+    const article = ReviewArticle('1', 'Example', 'A', 'B', 'Include', 'Include');
+    expect(article.isComplete, isTrue);
+    expect(article.isConflict, isFalse);
+  });
 
-    expect(find.text('Review Workspace'), findsWidgets);
+  test('an article with different votes has a conflict', () {
+    const article = ReviewArticle('2', 'Example', 'A', 'B', 'Include', 'Exclude');
+    expect(article.isComplete, isTrue);
+    expect(article.isConflict, isTrue);
   });
 }

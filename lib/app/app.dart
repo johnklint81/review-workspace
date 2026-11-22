@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import '../screens/pages.dart';
+import 'auth_gate.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ReviewWorkspaceApp extends StatelessWidget {
   const ReviewWorkspaceApp({super.key});
@@ -13,7 +15,7 @@ class ReviewWorkspaceApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
           scaffoldBackgroundColor: const Color(0xFFF7F9FC),
         ),
-        home: const WorkspaceShell(),
+        home: const AuthGate(child: WorkspaceShell()),
       );
 }
 
@@ -46,8 +48,13 @@ class _WorkspaceShellState extends State<WorkspaceShell> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Review Workspace', style: TextStyle(fontWeight: FontWeight.w700)),
-        actions: const [
-          Padding(
+        actions: [
+          IconButton(
+            tooltip: 'Sign out',
+            onPressed: () async => Supabase.instance.client.auth.signOut(),
+            icon: const Icon(Icons.logout),
+          ),
+          const Padding(
             padding: EdgeInsets.only(right: 12),
             child: Center(child: Chip(label: Text('Demo data'))),
           ),

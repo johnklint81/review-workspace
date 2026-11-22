@@ -1,46 +1,50 @@
-# Review Workspace — Milestone 3 (PostgreSQL foundation)
+# Milestone 4: authentication gate
 
-This adds **only the database design**, not the Flutter/Supabase connection. Keep the Milestone 2 Flutter `lib/` files unchanged.
+This is a **patch**, not a complete Flutter project. Your existing app, Supabase initialization in `lib/main.dart`, `pubspec.yaml`, database and five screens stay in place.
 
-## Apply it
+## Files
 
-1. Create a new Supabase project (region close to your team), and store your database password securely.
-2. In **SQL Editor**, open `supabase/migrations/20261122000100_initial_review_schema.sql` and execute it **once** on a new project. Alternatively, track and apply it with the Supabase CLI migrations workflow.
-3. Confirm the seven tables exist in Database → Tables.
-4. In Authentication → Users, create/invite the three authors. Do **not** disable Row Level Security.
-5. Using the SQL editor (privileged admin context), add a project and its three memberships (see `docs/initial_setup.sql`). Replace placeholders with actual `auth.users.id` values.
-6. Test with a **signed-in nonmember** before uploading real review data. Nonmembers must not see the project/articles; members must see only their project. Read `docs/security_checklist.md`.
+- `lib/app/app.dart`: updated to put `AuthGate` in front of `WorkspaceShell`, and adds a sign-out button.
+- `lib/app/auth_gate.dart`: new sign-in screen and project membership gate.
+- `test/widget_test.dart`: replaces the old public-dashboard smoke test with data-model tests that do not require a live Supabase session.
 
-## Schema design
+## Install
 
-- `projects`: review project
-- `project_members`: permitted authors (links to Supabase Auth accounts)
-- `articles`: one row per imported unique record
-- `article_assignments`: exactly two intended reviewers per article; **at most two** enforced in DB, exactly two checked by importer
-- `screening_decisions`: each assigned reviewer submits one immutable vote
-- `conflict_messages`: discussion about genuinely conflicting articles
-- `conflict_resolutions`: immutable final conflict outcome; original reviewer records consensus, unassigned reviewer records arbitration
+1. Commit your working changes before copying files.
+2. Copy `lib/app/app.dart` and `lib/app/auth_gate.dart` into your existing Flutter project's `lib/app/` directory.
+3. Replace `test/widget_test.dart` with the file here.
+4. Do **not** overwrite your existing `lib/main.dart`, which initializes Supabase.
+5. Run `flutter analyze`, `flutter test`, then start Chrome with your `--dart-define` values.
 
-The article-level final status can later be derived in the backend: fewer than two votes = incomplete; two matching votes = agreement; two different votes without resolution = conflict; resolution row = finalized. Don't count 2 votes as 2 unique articles.
+## Account and project setup
 
-### Important constraints
+In the Supabase Dashboard, create your author accounts with Authentication > Users > Add user (or invite them). Disable public signup under Authentication settings if you want invite-only accounts; not displaying signup in the UI does not disable the underlying signup endpoint.
 
-- The browser application has **read access only** to projects, members, articles, and assignments. It cannot create article imports/assignments; those require a trusted import pathway designed in the next milestone.
-- Authenticated authors can insert only *their own assigned* screening decisions and *their own* conflict comments/resolutions. No editing/deleting original votes.
-- The two-vote limit trigger is appropriate for the three-person workflow but bulk assignment/import logic must still handle duplicate/retry safely.
-- Imported vote handling needs its own trusted, validated API or SQL transaction; existing decisions are immutable through the user-facing API.
-- This is an **initial schema**, not a complete production system. Before real screening data: test RLS, import deduplication, concurrent writes, correction policy, backups, and the application's conflict status rules.
+**Do not paste credentials into SQL or GitHub.** After creating accounts, copy their UUIDs from Authentication > Users and execute the following SQL in the privileged Supabase SQL Editor, replacing all placeholder UUIDs and the project title:
 
-Do not commit your Supabase service role/secret key, database connection URL/password, or `.env` files to GitHub. Flutter Web can use the public/publishable key with authenticated sessions and RLS; never expose the service-role key.
-
-## What to commit
-
-Copy the `supabase/` and `docs/` folders into your existing project, then:
-
-```sh
-git add supabase docs
-git commit -m "Add PostgreSQL schema and access controls"
-git push
+```sql
+with p as (
+  insert into public.projects (title)
+  values ('Our literature review')
+  returning id
+)
+insert into public.project_members (project_id, user_id, display_name)
+select p.id, v.user_id, v.display_name
+from p
+cross join (values
+  ('AUTHOR_ONE_AUTH_UUID'::uuid, 'Author A'),
+  ('AUTHOR_TWO_AUTH_UUID'::uuid, 'Author B'),
+  ('AUTHOR_THREE_AUTH_UUID'::uuid, 'Author C')
+) as v(user_id, display_name);
 ```
 
-Official references: https://supabase.com/docs/guides/database/postgres/row-level-security and https://supabase.com/docs/guides/local-development/database-migrations
+Do not execute the example SQL until all three accounts exist and the placeholders have been replaced. This inserts one project and registers its three authors in one transaction. If you need to add members to an existing project instead, use its actual UUID rather than creating a duplicate project.
+
+## Test
+
+- Unauthenticated user: sees only login.
+- Authenticated author without `project_members` entry: sees 'No project access yet'.
+- Authenticated member: sees the existing **demo** dashboard and can sign out.
+- Confirm that an authenticated user who is not a member cannot SELECT project data through the Supabase API. The UI gate is not a substitute for RLS.
+
+**No data import, password reset, invitations, or database-driven statistics are included yet.** This is a prototype step; verify backend privileges and RLS before using real research data.
