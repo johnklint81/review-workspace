@@ -138,29 +138,41 @@ Deno.serve(async (req) => {
   const payload = JSON.stringify(backup, null, 2);
   const filename = `c-elegans-review-backup-${exportedAt.replace(/[:.]/g, '-')}.json`;
 
-  const { data: upload, error: uploadError } = await admin.storage
-    .from('review-backups')
-    .upload(`${projectId}/${filename}`, new Blob([payload], { type: 'application/json' }), {
-      contentType: 'application/json',
-      upsert: false,
+    const { data: upload, error: uploadError } = await admin.storage
+      .from('review-backups')
+      .upload(
+        `${projectId}/${filename}`,
+        new Blob([payload], { type: 'application/json' }),
+        {
+          contentType: 'application/json',
+          upsert: false,
+        },
+      );
+
+    if (uploadError) {
+      return json({ error: uploadError.message }, 500);
+    }
+
+    const { data: signed, error: signedError } = await admin.storage
+      .from('review-backups')
+      .createSignedUrl(
+        upload.path,
+        60 * 15,
+        {
+          download: filename,
+        },
+      );
+
+    if (signedError || !signed?.signedUrl) {
+      return json({
+        error: signedError?.message ?? 'Could not create download URL',
+      }, 500);
+    }
+
+    return json({
+      filename,
+      exported_at: exportedAt,
+      download_url: signed.signedUrl,
+      project_id: projectId,
     });
-
-  if (uploadError) {
-    return json({ error: uploadError.message }, 500);
-  }
-
-  const { data: signed, error: signedError } = await admin.storage
-    .from('review-backups')
-    .createSignedUrl(upload.path, 60 * 15);
-
-  if (signedError || !signed?.signedUrl) {
-    return json({ error: signedError?.message ?? 'Could not create download URL' }, 500);
-  }
-
-  return json({
-    filename,
-    exported_at: exportedAt,
-    download_url: signed.signedUrl,
-    project_id: projectId,
-  });
 });

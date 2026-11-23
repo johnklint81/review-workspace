@@ -4,6 +4,7 @@ import '../widgets/summary_widgets.dart';
 import '../services/project_service.dart';
 import '../services/screening_statistics_service.dart';
 import 'csv_import_page.dart';
+import '../services/conflict_service.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -290,51 +291,203 @@ class _ArticlesPageState extends State<ArticlesPage> {
   }
 }
 
-class ConflictsPage extends StatelessWidget {
+class ConflictsPage extends StatefulWidget {
   const ConflictsPage({super.key});
+
+  @override
+  State<ConflictsPage> createState() => _ConflictsPageState();
+}
+
+class _ConflictsPageState extends State<ConflictsPage> {
+  late Future<ConflictStatistics> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadConflicts();
+  }
+
+  Future<ConflictStatistics> _loadConflicts() async {
+    final projects = await ProjectService().getProjects();
+
+    if (projects.isEmpty) {
+      throw StateError('No accessible review project found.');
+    }
+
+    return ConflictService().getStatistics(projects.first['id'].toString());
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _loadConflicts();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final demoConflicts = articles.where((a) => a.isConflict).toList();
-    return PageFrame(
-      title: 'Conflicts',
-      description:
-          'Discussion first; the third author arbitrates if consensus is not reached.',
-      children: [
-        const ResponsiveSummaryCards(
-          cards: [
-            SummaryCard(
-              label: 'Awaiting discussion',
-              value: '48',
-              icon: Icons.forum_outlined,
+    return FutureBuilder<ConflictStatistics>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const PageFrame(
+            title: 'Conflicts',
+            description: 'Loading screening disagreements...',
+            children: [
+              Center(
+                child: Padding(
+                  padding: EdgeInsets.all(48),
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            ],
+          );
+        }
+
+        if (snapshot.hasError) {
+          return PageFrame(
+            title: 'Conflicts',
+            description: 'Unable to load conflict data.',
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      Text(
+                        snapshot.error.toString(),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: _refresh,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final statistics = snapshot.data!;
+
+        return PageFrame(
+          title: 'Conflicts',
+          description: 'Disagreements between the two independent reviewers.',
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
             ),
-            SummaryCard(
-              label: 'Awaiting arbitration',
-              value: '12',
-              icon: Icons.gavel_outlined,
+            const SizedBox(height: 12),
+
+            ResponsiveSummaryCards(
+              cards: [
+                SummaryCard(
+                  label: 'Total disagreements',
+                  value: '${statistics.totalConflicts}',
+                  icon: Icons.sync_problem_outlined,
+                ),
+                SummaryCard(
+                  label: 'Unresolved',
+                  value: '${statistics.unresolved}',
+                  icon: Icons.forum_outlined,
+                ),
+                SummaryCard(
+                  label: 'Resolved by discussion',
+                  value: '${statistics.resolvedByDiscussion}',
+                  icon: Icons.forum_outlined,
+                ),
+                SummaryCard(
+                  label: 'Resolved by arbitration',
+                  value: '${statistics.resolvedByArbitration}',
+                  icon: Icons.gavel_outlined,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            if (statistics.conflicts.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle_outline),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'No disagreements found. '
+                          'Once two assigned reviewers submit different '
+                          'decisions for an article, it will appear here.',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Card(
+                child: Column(
+                  children: [
+                    for (final conflict in statistics.conflicts)
+                      ListTile(
+                        leading: Icon(
+                          conflict.isResolved
+                              ? Icons.check_circle_outline
+                              : Icons.sync_problem_outlined,
+                        ),
+                        title: Text(conflict.title),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (conflict.doi != null &&
+                                conflict.doi!.isNotEmpty)
+                              Text('DOI: ${conflict.doi}'),
+                            const SizedBox(height: 4),
+                            for (final decision in conflict.decisions)
+                              Text(
+                                '${decision.displayName}: '
+                                '${decision.vote}',
+                              ),
+                            if (conflict.discussionMessageCount > 0)
+                              Text(
+                                '${conflict.discussionMessageCount} '
+                                'discussion message'
+                                '${conflict.discussionMessageCount == 1 ? '' : 's'}',
+                              ),
+                          ],
+                        ),
+                        trailing: Chip(
+                          label: Text(
+                            conflict.isResolved ? 'Resolved' : 'Discuss',
+                          ),
+                        ),
+                        isThreeLine: true,
+                      ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 12),
+
+            const Text(
+              'Original reviewer decisions are preserved. '
+              'Discussion and arbitration outcomes are tracked separately '
+              'from those original decisions.',
             ),
           ],
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Column(
-            children: [
-              for (final a in demoConflicts)
-                ListTile(
-                  leading: const Icon(Icons.sync_problem_outlined),
-                  title: Text(a.title),
-                  subtitle: Text(
-                    '${a.firstReviewer}: ${a.firstDecision} · ${a.secondReviewer}: ${a.secondDecision}',
-                  ),
-                  trailing: const Chip(label: Text('Discuss')),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'Discussion notes, consensus decisions, and arbitration actions will become interactive after the backend is connected.',
-        ),
-      ],
+        );
+      },
     );
   }
 }
