@@ -339,44 +339,280 @@ class ConflictsPage extends StatelessWidget {
   }
 }
 
-class StatisticsPage extends StatelessWidget {
+class StatisticsPage extends StatefulWidget {
   const StatisticsPage({super.key});
+
   @override
-  Widget build(BuildContext context) => PageFrame(
-    title: 'Statistics',
-    description:
-        'Track assignment-level screening progress separately from article-level completion.',
-    children: [
-      const ResponsiveSummaryCards(
-        cards: [
-          SummaryCard(
-            label: 'Decision completion',
-            value: '75%',
-            icon: Icons.percent,
-          ),
-          SummaryCard(
-            label: 'Fully screened articles',
-            value: '68.3%',
-            icon: Icons.done_all,
-          ),
-          SummaryCard(
-            label: 'Open conflicts',
-            value: '48',
-            icon: Icons.warning_amber_outlined,
-          ),
-          SummaryCard(
-            label: 'Awaiting arbitration',
-            value: '12',
-            icon: Icons.gavel_outlined,
-          ),
-        ],
-      ),
-      const SizedBox(height: 16),
-      const ReviewerLeaderboard(),
-      const SizedBox(height: 12),
-      const Text(
-        'Agreement rates will be calculated from articles with two recorded decisions. Resolved conflicts will retain both original decisions.',
-      ),
-    ],
-  );
+  State<StatisticsPage> createState() => _StatisticsPageState();
+}
+
+class _StatisticsPageState extends State<StatisticsPage> {
+  late Future<ScreeningStatistics> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadStatistics();
+  }
+
+  Future<ScreeningStatistics> _loadStatistics() async {
+    final projects = await ProjectService().getProjects();
+
+    if (projects.isEmpty) {
+      throw StateError('No accessible review project found.');
+    }
+
+    return ScreeningStatisticsService().getStatistics(
+      projects.first['id'].toString(),
+    );
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _loadStatistics();
+    });
+  }
+
+  String _pct(double value) => '${value.toStringAsFixed(1)}%';
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<ScreeningStatistics>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const PageFrame(
+            title: 'Statistics',
+            description:
+                'Live screening, agreement, conflict, and reviewer statistics.',
+            children: [
+              Center(
+                child: Padding(
+                  padding: EdgeInsets.all(48),
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            ],
+          );
+        }
+
+        if (snapshot.hasError) {
+          return PageFrame(
+            title: 'Statistics',
+            description: 'Unable to load live statistics.',
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        snapshot.error.toString(),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: _refresh,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final s = snapshot.data!;
+
+        return PageFrame(
+          title: 'Statistics',
+          description:
+              'Live statistics from PostgreSQL for the C. elegans review.',
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ResponsiveSummaryCards(
+              cards: [
+                SummaryCard(
+                  label: 'Total articles',
+                  value: '${s.totalArticles}',
+                  icon: Icons.library_books_outlined,
+                ),
+                SummaryCard(
+                  label: 'Decision completion',
+                  value: _pct(s.decisionCompletionRate),
+                  icon: Icons.percent,
+                ),
+                SummaryCard(
+                  label: 'Fully screened',
+                  value: '${s.fullyScreenedArticles}',
+                  icon: Icons.done_all,
+                ),
+                SummaryCard(
+                  label: 'Unresolved conflicts',
+                  value: '${s.unresolvedConflicts}',
+                  icon: Icons.warning_amber_outlined,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Screening progress',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${s.completedDecisions} of ${s.requiredDecisions} required screening decisions completed.',
+                    ),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(
+                      value: s.progress.clamp(0.0, 1.0),
+                      minHeight: 10,
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 24,
+                      runSpacing: 12,
+                      children: [
+                        Text('Fully screened: ${s.fullyScreenedArticles}'),
+                        Text(
+                          'Partially screened: ${s.partiallyScreenedArticles}',
+                        ),
+                        Text('Not started: ${s.notStartedArticles}'),
+                        Text(
+                          'Fully assigned (2 reviewers): ${s.fullyAssignedArticles} '
+                          '(${_pct(s.assignmentCompletionRate)})',
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ResponsiveSummaryCards(
+              cards: [
+                SummaryCard(
+                  label: 'Agreement rate',
+                  value: _pct(s.agreementRate),
+                  icon: Icons.handshake_outlined,
+                ),
+                SummaryCard(
+                  label: 'Agreements',
+                  value: '${s.agreements}',
+                  icon: Icons.check_circle_outline,
+                ),
+                SummaryCard(
+                  label: 'Disagreements',
+                  value: '${s.disagreements}',
+                  icon: Icons.sync_problem_outlined,
+                ),
+                SummaryCard(
+                  label: 'Two-decision articles',
+                  value: '${s.screenedWithTwoDecisions}',
+                  icon: Icons.fact_check_outlined,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Conflict resolution',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 28,
+                      runSpacing: 12,
+                      children: [
+                        Text('Unresolved: ${s.unresolvedConflicts}'),
+                        Text(
+                          'Resolved by discussion: ${s.resolvedByDiscussion}',
+                        ),
+                        Text(
+                          'Resolved by arbitration: ${s.resolvedByArbitration}',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'A disagreement is counted as unresolved until a conflict resolution record exists. The current schema does not distinguish an intermediate "awaiting arbitration" state.',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Reviewer leaderboard',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Completed decisions compared with each reviewer\'s assigned workload.',
+                    ),
+                    const SizedBox(height: 16),
+                    if (s.reviewerStats.isEmpty)
+                      const Text('No reviewers found.')
+                    else
+                      for (final reviewer in s.reviewerStats) ...[
+                        Row(
+                          children: [
+                            Expanded(child: Text(reviewer.displayName)),
+                            Text(
+                              '${reviewer.completed} / ${reviewer.assigned} '
+                              '(${_pct(reviewer.completionRate)})',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 7),
+                        LinearProgressIndicator(
+                          value: reviewer.completionRate / 100,
+                          minHeight: 8,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${reviewer.remaining} decisions remaining',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
