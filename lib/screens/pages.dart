@@ -1,10 +1,10 @@
 import 'package:material_ui/material_ui.dart';
-import '../data/demo_data.dart';
 import '../widgets/summary_widgets.dart';
 import '../services/project_service.dart';
 import '../services/screening_statistics_service.dart';
 import 'csv_import_page.dart';
 import '../services/conflict_service.dart';
+import '../services/article_service.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -230,63 +230,213 @@ class ImportPage extends CsvImportPage {
 
 class ArticlesPage extends StatefulWidget {
   const ArticlesPage({super.key});
+
   @override
   State<ArticlesPage> createState() => _ArticlesPageState();
 }
 
 class _ArticlesPageState extends State<ArticlesPage> {
+  late Future<List<ReviewArticle>> _future;
   String query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadArticles();
+  }
+
+  Future<List<ReviewArticle>> _loadArticles() async {
+    final projects = await ProjectService().getProjects();
+
+    if (projects.isEmpty) {
+      throw StateError('No accessible review project found.');
+    }
+
+    return ArticleService().getArticles(projects.first['id'].toString());
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _loadArticles();
+    });
+  }
+
+  String _status(ReviewArticle article) {
+    if (article.hasConflict) return 'Conflict';
+    if (article.isComplete) return 'Complete';
+    if (article.decisions.isNotEmpty) return 'In progress';
+    if (article.assignments.isEmpty) return 'Unassigned';
+    return 'Pending';
+  }
+
+  String _reviewerVote(ReviewArticle article, String reviewerId) {
+    for (final decision in article.decisions) {
+      if (decision.reviewerId == reviewerId) {
+        return decision.vote;
+      }
+    }
+
+    return 'Pending';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filtered = articles
-        .where(
-          (a) =>
-              a.title.toLowerCase().contains(query.toLowerCase()) ||
-              a.id.toLowerCase().contains(query.toLowerCase()),
-        )
-        .toList();
-    return PageFrame(
-      title: 'Articles',
-      description: 'Example articles and two independent screening decisions.',
-      children: [
-        TextField(
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            labelText: 'Search by title or article ID',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (value) => setState(() => query = value),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Column(
+    return FutureBuilder<List<ReviewArticle>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const PageFrame(
+            title: 'Articles',
+            description: 'Loading review articles...',
             children: [
-              for (final article in filtered)
-                ListTile(
-                  title: Text(article.title),
-                  subtitle: Text(
-                    '${article.id} · ${article.firstReviewer}: ${article.firstDecision} · ${article.secondReviewer}: ${article.secondDecision}',
-                  ),
-                  trailing: Chip(
-                    label: Text(
-                      article.isConflict
-                          ? 'Conflict'
-                          : article.isComplete
-                          ? 'Complete'
-                          : 'Pending',
-                    ),
-                  ),
-                  isThreeLine: true,
+              Center(
+                child: Padding(
+                  padding: EdgeInsets.all(48),
+                  child: CircularProgressIndicator(),
                 ),
-              if (filtered.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('No matching articles.'),
-                ),
+              ),
             ],
-          ),
-        ),
-      ],
+          );
+        }
+
+        if (snapshot.hasError) {
+          return PageFrame(
+            title: 'Articles',
+            description: 'Unable to load articles.',
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      Text(
+                        snapshot.error.toString(),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: _refresh,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final allArticles = snapshot.data ?? [];
+
+        final normalizedQuery = query.trim().toLowerCase();
+
+        final filtered = normalizedQuery.isEmpty
+            ? allArticles
+            : allArticles.where((article) {
+                return article.title.toLowerCase().contains(normalizedQuery) ||
+                    article.id.toLowerCase().contains(normalizedQuery) ||
+                    (article.doi?.toLowerCase().contains(normalizedQuery) ??
+                        false);
+              }).toList();
+
+        return PageFrame(
+          title: 'Articles',
+          description:
+              'Articles, reviewer assignments, and independent screening decisions.',
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      labelText: 'Search by title, article ID, or DOI',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      setState(() => query = value);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh'),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            if (allArticles.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Row(
+                    children: [
+                      Icon(Icons.library_books_outlined),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text('No articles have been imported yet.'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (filtered.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('No articles match your search.'),
+                ),
+              )
+            else
+              Card(
+                child: Column(
+                  children: [
+                    for (final article in filtered)
+                      ListTile(
+                        leading: Icon(
+                          article.hasConflict
+                              ? Icons.sync_problem_outlined
+                              : article.isComplete
+                              ? Icons.check_circle_outline
+                              : Icons.article_outlined,
+                        ),
+                        title: Text(article.title),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${article.id} · '
+                              '${article.decisions.length}/${article.assignments.length} decisions',
+                            ),
+                            if (article.doi != null && article.doi!.isNotEmpty)
+                              Text('DOI: ${article.doi}'),
+                            if (article.authors != null &&
+                                article.authors!.isNotEmpty)
+                              Text(article.authors!),
+                            const SizedBox(height: 4),
+                            for (final assignment in article.assignments)
+                              Text(
+                                '${assignment.reviewerName}: '
+                                '${_reviewerVote(article, assignment.reviewerId)}',
+                              ),
+                          ],
+                        ),
+                        trailing: Chip(label: Text(_status(article))),
+                        isThreeLine: true,
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
