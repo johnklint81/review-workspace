@@ -19,11 +19,19 @@ class _CsvImportPageState extends State<CsvImportPage> {
   List<String> headers = [];
   List<List<String>> records = [];
   final Map<String, String?> mapping = {};
+  final Set<String> visibleColumns = {};
+  final ScrollController _horizontalController = ScrollController();
 
   bool _isPicking = false;
   int _previewVersion = 0;
 
-  static const _maxPreviewBytes = 10 * 1024 * 1024;
+  static const _maxPreviewBytes = 100 * 1024 * 1024;
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    super.dispose();
+  }
 
   static const fields = <String, String>{
     'id': 'Article ID',
@@ -58,20 +66,21 @@ class _CsvImportPageState extends State<CsvImportPage> {
         headers = [];
         records = [];
         mapping.clear();
+        visibleColumns.clear();
       });
 
       // Check the reported size before loading the contents, when available.
       final size = await file.length();
       if (!mounted) return;
       if (size != null && size > _maxPreviewBytes) {
-        throw const FormatException('File exceeds the 10 MiB preview limit.');
+        throw const FormatException('File exceeds the 100 MiB preview limit.');
       }
 
       // file_picker 13 exposes a method, not a .bytes property.
       final bytes = await file.readAsBytes();
       if (!mounted) return;
       if (bytes.length > _maxPreviewBytes) {
-        throw const FormatException('File exceeds the 10 MiB preview limit.');
+        throw const FormatException('File exceeds the 100 MiB preview limit.');
       }
 
       var content = utf8.decode(bytes, allowMalformed: false);
@@ -138,6 +147,9 @@ class _CsvImportPageState extends State<CsvImportPage> {
         fileName = file.name;
         headers = newHeaders;
         records = newRecords;
+        visibleColumns
+          ..clear()
+          ..addAll(newHeaders.take(8));
         mapping
           ..clear()
           ..addAll(detected);
@@ -161,6 +173,52 @@ class _CsvImportPageState extends State<CsvImportPage> {
           _isPicking = false;
         });
       }
+    }
+  }
+
+  void _showRecordDetails(int index) {
+    final row = records[index];
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Record ${index + 1}'),
+        content: SizedBox(
+          width: 760,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: headers.length,
+            itemBuilder: (context, column) => Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: SelectableText('${headers[column]}\\n${row[column]}'),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _columnWidth(String header) {
+    switch (header.trim().toLowerCase()) {
+      case 'year':
+      case 'volume':
+      case 'issue':
+        return 45;
+      case 'title':
+        return 350;
+      case 'abstract':
+        return 450;
+      case 'authors':
+        return 300;
+      case 'doi':
+        return 200;
+      default:
+        return 180;
     }
   }
 
@@ -228,39 +286,108 @@ class _CsvImportPageState extends State<CsvImportPage> {
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 8),
-        Card(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: headers
-                  .map((header) => DataColumn(label: Text(header)))
-                  .toList(),
-              rows: records
-                  .take(10)
-                  .map(
-                    (row) => DataRow(
-                      cells: row
-                          .map(
-                            (value) => DataCell(
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 260,
-                                ),
+        const Text(
+          'Choose visible columns. Select a row to inspect every field in full.',
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            for (final header in headers)
+              FilterChip(
+                label: Text(header),
+                selected: visibleColumns.contains(header),
+                onSelected: (selected) => setState(() {
+                  if (selected) {
+                    visibleColumns.add(header);
+                  } else {
+                    visibleColumns.remove(header);
+                  }
+                }),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            TextButton(
+              onPressed: () => setState(() => visibleColumns.addAll(headers)),
+              child: const Text('Show all columns'),
+            ),
+            TextButton(
+              onPressed: () => setState(() {
+                visibleColumns
+                  ..clear()
+                  ..addAll(headers.take(8));
+              }),
+              child: const Text('Show first 8'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (visibleColumns.isEmpty)
+          const Text('Select at least one column to display the preview.')
+        else
+          Card(
+            child: SizedBox(
+              height: 420,
+              width: double.infinity,
+              child: Scrollbar(
+                controller: _horizontalController,
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  controller: _horizontalController,
+                  scrollDirection: Axis.horizontal,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: DataTable(
+                      showCheckboxColumn: false,
+                      columns: [
+                        const DataColumn(label: Text('Record')),
+                        for (final header in headers)
+                          if (visibleColumns.contains(header))
+                            DataColumn(
+                              label: SizedBox(
+                                width: _columnWidth(header),
                                 child: Text(
-                                  value,
-                                  maxLines: 2,
+                                  header,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ),
-                          )
-                          .toList(),
+                      ],
+                      rows: [
+                        for (
+                          var index = 0;
+                          index < records.length && index < 10;
+                          index++
+                        )
+                          DataRow(
+                            onSelectChanged: (_) => _showRecordDetails(index),
+                            cells: [
+                              DataCell(Text('${index + 1}')),
+                              for (var col = 0; col < headers.length; col++)
+                                if (visibleColumns.contains(headers[col]))
+                                  DataCell(
+                                    SizedBox(
+                                      width: _columnWidth(headers[col]),
+                                      child: Text(
+                                        records[index][col],
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                            ],
+                          ),
+                      ],
                     ),
-                  )
-                  .toList(),
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
         if (records.isEmpty) ...[
           const SizedBox(height: 12),
           const Text('The CSV contains column headers but no data rows.'),
