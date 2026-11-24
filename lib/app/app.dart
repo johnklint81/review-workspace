@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../screens/admin_page.dart';
 import '../services/admin_service.dart';
 import '../services/project_service.dart';
+import '../screens/model_characterization_page.dart';
 
 class ReviewWorkspaceApp extends StatelessWidget {
   const ReviewWorkspaceApp({super.key});
@@ -40,6 +41,7 @@ class _WorkspaceShellState extends State<WorkspaceShell> {
     'Articles',
     'Conflicts',
     'Statistics',
+    'Model characterization',
   ];
 
   static const baseIcons = [
@@ -48,6 +50,7 @@ class _WorkspaceShellState extends State<WorkspaceShell> {
     Icons.article_outlined,
     Icons.forum_outlined,
     Icons.bar_chart_outlined,
+    Icons.science_outlined,
   ];
 
   List<String> get titles => [...baseTitles, if (isAdmin) 'Administration'];
@@ -63,7 +66,8 @@ class _WorkspaceShellState extends State<WorkspaceShell> {
     2 => const ArticlesPage(),
     3 => const ConflictsPage(),
     4 => const StatisticsPage(),
-    5 => const AdminPage(),
+    5 => const ModelCharacterizationPage(),
+    6 when isAdmin => const AdminPage(),
     _ => const DashboardPage(),
   };
 

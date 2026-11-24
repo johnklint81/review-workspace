@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     return json({ error: 'Project administrator access required' }, 403);
   }
 
-  const [project, members, articles, assignments, decisions, messages, resolutions] =
+  const [project, members, articles, assignments, decisions, messages, resolutions, characterizations] =
     await Promise.all([
       admin.from('projects').select('id, title, created_at').eq('id', projectId).single(),
       admin.from('project_members')
@@ -104,9 +104,12 @@ Deno.serve(async (req) => {
       admin.from('conflict_resolutions')
         .select('id, project_id, article_id, method, final_vote, decided_by, rationale, decided_at')
         .eq('project_id', projectId),
+      admin.from('model_characterizations')
+        .select('*')
+        .eq('project_id', projectId),
     ]);
 
-  const results = [project, members, articles, assignments, decisions, messages, resolutions];
+  const results = [project, members, articles, assignments, decisions, messages, resolutions, characterizations];
   const firstError = results.find((result) => result.error);
   if (firstError?.error) {
     return json({ error: firstError.error.message }, 500);
@@ -114,7 +117,7 @@ Deno.serve(async (req) => {
 
   const exportedAt = new Date().toISOString();
   const backup = {
-    backup_version: 1,
+    backup_version: 2,
     application: 'Review Workspace',
     project: project.data,
     exported_at: exportedAt,
@@ -127,6 +130,7 @@ Deno.serve(async (req) => {
       screening_decisions: decisions.data ?? [],
       conflict_messages: messages.data ?? [],
       conflict_resolutions: resolutions.data ?? [],
+      model_characterizations: characterizations.data ?? [],
     },
     excluded_from_this_backup: [
       'Supabase Auth users and credentials',
